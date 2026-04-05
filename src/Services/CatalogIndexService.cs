@@ -9,13 +9,13 @@ using Azure.Search.Documents.Models;
 
 namespace SalesWorkflow.Services;
 
-public class EcommerceIndexService(
+public class CatalogIndexService(
     SearchIndexClient indexClient,
     SearchClient catalogSearchClient,
     AzureOpenAIClient azureOpenAIClient,
     SalesIndexSettings salesSettings,
     FoundrySettings foundrySettings,
-    ILogger<EcommerceIndexService> logger)
+    ILogger<CatalogIndexService> logger)
 {
     private const string AlgorithmName = "product-hnsw";
     private const string VectorProfileName = "product-vector-profile";

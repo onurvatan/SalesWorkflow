@@ -75,14 +75,14 @@ public static class ServiceCollectionExtensions
             builder.Services.AddKeyedSingleton<SearchClient>("catalog",
                 new SearchClient(new Uri(searchConfig!.Endpoint!), salesIndexConfig!.CatalogIndexName!, credential));
 
-            // EcommerceIndexService — creates/updates the catalog index at startup
-            builder.Services.AddSingleton<EcommerceIndexService>(sp => new EcommerceIndexService(
+            // CatalogIndexService — creates/updates the catalog index at startup
+            builder.Services.AddSingleton<CatalogIndexService>(sp => new CatalogIndexService(
                 sp.GetRequiredService<SearchIndexClient>(),
                 sp.GetRequiredKeyedService<SearchClient>("catalog"),
                 sp.GetRequiredService<AzureOpenAIClient>(),
                 sp.GetRequiredService<IOptions<SalesIndexSettings>>().Value,
                 sp.GetRequiredService<IOptions<FoundrySettings>>().Value,
-                sp.GetRequiredService<ILogger<EcommerceIndexService>>()));
+                sp.GetRequiredService<ILogger<CatalogIndexService>>()));
 
             // Health check — lightweight probe confirms catalog index connectivity
             hcBuilder.Add(new HealthCheckRegistration(

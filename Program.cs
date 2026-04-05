@@ -20,7 +20,7 @@ var app = builder.Build();
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     using var scope = app.Services.CreateScope();
-    var indexService = scope.ServiceProvider.GetService<EcommerceIndexService>();
+    var indexService = scope.ServiceProvider.GetService<CatalogIndexService>();
     if (indexService is null)
     {
         app.Logger.LogInformation("Catalog indexing skipped — set SalesIndex:CatalogIndexName to enable.");
