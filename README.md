@@ -1,4 +1,4 @@
-# SalesWorkflow
+# AgentCommerce
 
 A .NET 10 Web API for an AI-powered e-commerce sales assistant built with the **Microsoft Agent Framework** and **Azure AI Search** vector embeddings.
 
