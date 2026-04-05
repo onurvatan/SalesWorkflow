@@ -46,6 +46,10 @@ public static class ServiceCollectionExtensions
             AddSalesWorkflowAgent(builder);
         }
 
+        // These agents depend only on IChatClient + in-memory repos — always registered
+        AddCustomerServiceAgent(builder);
+        AddAfterSaleReportAgent(builder);
+
         return builder;
     }
 
@@ -67,6 +71,10 @@ public static class ServiceCollectionExtensions
 
         // IProductRepository — always available; StockCheckTool works without Azure Search
         builder.Services.AddSingleton<IProductRepository, ProductRepository>();
+
+        // In-memory order and customer stores for CustomerService and AfterSaleReport agents
+        builder.Services.AddSingleton<IOrderRepository, OrderRepository>();
+        builder.Services.AddSingleton<ICustomerRepository, CustomerRepository>();
 
         builder.Services.AddHealthChecks();
     }
@@ -131,6 +139,34 @@ public static class ServiceCollectionExtensions
         builder.AddAIAgent(
             SalesWorkflowAgent.AgentName,
             (sp, name) => sp.GetRequiredService<SalesWorkflowAgent>().CreateAgent(name),
+            ServiceLifetime.Singleton);
+    }
+
+    private static void AddCustomerServiceAgent(WebApplicationBuilder builder)
+    {
+        builder.Services.AddSingleton<CustomerServiceWorkflowAgent>();
+
+        // ── CustomerServiceWorkflowAgent — Handoff workflow ──────────────────
+        // triage-agent classifies intent and hands off to a specialist:
+        //   billing-specialist  → refunds, disputes, escalation (HITL)
+        //   shipping-specialist → delivery tracking, address issues
+        // EnableReturnToPrevious() lets a specialist re-route back to triage.
+        builder.AddAIAgent(
+            CustomerServiceWorkflowAgent.AgentName,
+            (sp, name) => sp.GetRequiredService<CustomerServiceWorkflowAgent>().CreateAgent(name),
+            ServiceLifetime.Singleton);
+    }
+
+    private static void AddAfterSaleReportAgent(WebApplicationBuilder builder)
+    {
+        builder.Services.AddSingleton<AfterSaleReportWorkflowAgent>();
+
+        // ── AfterSaleReportWorkflowAgent — Concurrent workflow ──────────────
+        // sales-analyst and satisfaction-analyst run in parallel (fan-out);
+        // the aggregator lambda merges their outputs into one admin report (fan-in).
+        builder.AddAIAgent(
+            AfterSaleReportWorkflowAgent.AgentName,
+            (sp, name) => sp.GetRequiredService<AfterSaleReportWorkflowAgent>().CreateAgent(name),
             ServiceLifetime.Singleton);
     }
 }

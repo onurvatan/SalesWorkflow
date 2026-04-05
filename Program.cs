@@ -67,6 +67,36 @@ app.MapPost("/agents/sales-workflow",
     .WithName("RunSalesWorkflow")
     .WithSummary("Workflow agent — catalog-retriever → stock-checker → sales-responder (sequential)");
 
+// ─── Customer Service Workflow Agent ────────────────────────────
+// CustomerServiceWorkflowAgent uses the Handoff pattern:
+//   triage-agent → billing-specialist | shipping-specialist
+// The triage agent classifies the customer's issue and routes them to
+// the appropriate specialist. Billing specialist can escalate to human.
+app.MapPost("/agents/customer-service",
+    async (ChatRequest req, [FromKeyedServices("CustomerServiceWorkflowAgent")] AIAgent agent) =>
+    {
+        var result = await agent.RunAsync(
+            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        return Results.Ok(new { agentName = "CustomerServiceWorkflowAgent", result = result.Text });
+    })
+    .WithName("RunCustomerService")
+    .WithSummary("Handoff workflow — triage-agent → billing-specialist | shipping-specialist");
+
+// ─── After-Sale Report Workflow Agent ───────────────────────────
+// AfterSaleReportWorkflowAgent uses the Concurrent pattern:
+//   sales-analyst ‖ satisfaction-analyst → merged admin report
+// Both analysts execute in parallel; the aggregator merges their
+// outputs into a single report for admin consumption.
+app.MapPost("/agents/after-sale-report",
+    async (ChatRequest req, [FromKeyedServices("AfterSaleReportWorkflowAgent")] AIAgent agent) =>
+    {
+        var result = await agent.RunAsync(
+            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        return Results.Ok(new { agentName = "AfterSaleReportWorkflowAgent", result = result.Text });
+    })
+    .WithName("RunAfterSaleReport")
+    .WithSummary("Concurrent workflow — sales-analyst ‖ satisfaction-analyst → merged admin report");
+
 app.Run();
 
 // Expose Program to WebApplicationFactory in integration tests
