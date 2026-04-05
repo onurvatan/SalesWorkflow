@@ -59,8 +59,8 @@ public class CustomerServiceWorkflowAgentTests
     [Fact]
     public void Create_ReturnsAgent_WithCorrectName()
     {
-        var triage = new Mock<AIAgent>().Object;
-        var billing = new Mock<AIAgent>().Object;
+        var triage = BuildStubAgent("TriageAgent");
+        var billing = BuildStubAgent("BillingSpecialistAgent");
         var workflow = AgentWorkflowBuilder
             .CreateHandoffBuilderWith(triage)
             .WithHandoffs(triage, [billing])
@@ -74,8 +74,8 @@ public class CustomerServiceWorkflowAgentTests
     [Fact]
     public void Create_ReturnsAgent_WithWorkflowDescription()
     {
-        var triage = new Mock<AIAgent>().Object;
-        var billing = new Mock<AIAgent>().Object;
+        var triage = BuildStubAgent("TriageAgent");
+        var billing = BuildStubAgent("BillingSpecialistAgent");
         var workflow = AgentWorkflowBuilder
             .CreateHandoffBuilderWith(triage)
             .WithHandoffs(triage, [billing])
@@ -84,5 +84,19 @@ public class CustomerServiceWorkflowAgentTests
         var agent = CustomerServiceWorkflowAgent.Create(workflow, CustomerServiceWorkflowAgent.AgentName);
 
         Assert.Equal(CustomerServiceWorkflowAgent.WorkflowDescription, agent.Description);
+    }
+
+    private static AIAgent BuildStubAgent(string name)
+    {
+        var stubParticipant = new Mock<AIAgent>().Object;
+        var workflow = AgentWorkflowBuilder
+            .CreateGroupChatBuilderWith(participants =>
+                new RoundRobinGroupChatManager(participants,
+                    (_, _, _) => ValueTask.FromResult(true)))
+            .AddParticipants([stubParticipant])
+            .WithName(name)
+            .Build();
+
+        return workflow.AsAIAgent(name, name, $"Stub agent for {name}", InProcessExecution.OffThread);
     }
 }

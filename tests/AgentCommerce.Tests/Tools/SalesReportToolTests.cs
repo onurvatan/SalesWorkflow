@@ -12,7 +12,7 @@ public class SalesReportToolTests
     public void Create_ReturnsFunction_WithCorrectName()
     {
         var tool = SalesReportTool.Create(_orders);
-        Assert.Equal("sales_report", tool.Metadata.Name);
+        Assert.Equal("sales_report", tool.Name);
     }
 
     [Fact]

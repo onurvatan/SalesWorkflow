@@ -2,21 +2,23 @@
 
 A .NET 10 Web API for an AI-powered e-commerce sales assistant built with the **Microsoft Agent Framework** and **Azure AI Search** vector embeddings.
 
-| Agent                          | Endpoint                         | Pattern    | Description                                                          |
-| ------------------------------ | -------------------------------- | ---------- | -------------------------------------------------------------------- |
-| `SalesWorkflowAgent`           | `POST /agents/sales-workflow`    | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder |
-| `CustomerServiceWorkflowAgent` | `POST /agents/customer-service`  | Handoff    | triage-agent routes to billing-specialist or shipping-specialist     |
-| `AfterSaleReportWorkflowAgent` | `POST /agents/after-sale-report` | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report           |
+| Agent                          | Endpoint                         | Pattern    | Description                                                               |
+| ------------------------------ | -------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| `SalesWorkflowAgent`           | `POST /agents/sales-workflow`    | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder      |
+| `CustomerServiceWorkflowAgent` | `POST /agents/customer-service`  | Handoff    | triage-agent routes to billing-specialist or shipping-specialist          |
+| `AfterSaleReportWorkflowAgent` | `POST /agents/after-sale-report` | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report                |
+| `OrchestratorAgent`            | `POST /agents`                   | GroupChat  | LLM-driven routing to CustomerService \| AfterSaleReport \| SalesWorkflow |
 
 Both agents are visible in the **Agent Framework DevUI** at `/devui` (development only).
 
 <img width="2735" height="1491" alt="image" src="https://github.com/user-attachments/assets/7639ee81-c61e-402a-8997-4966910224f5" />
 
-| Doc                                                                      | Pattern    | Description                                                        |
-| ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------ |
-| [docs/sales-workflow.md](docs/sales-workflow.md)                         | Sequential | Architecture, catalog index schema, tool schemas, config reference |
-| [docs/customer-service-workflow.md](docs/customer-service-workflow.md)   | Handoff    | Triage topology, tool schemas, HITL escalation extension point     |
-| [docs/after-sale-report-workflow.md](docs/after-sale-report-workflow.md) | Concurrent | Fan-out/fan-in topology, aggregator delegate, report format        |
+| Doc                                                                      | Pattern    | Description                                                         |
+| ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------- |
+| [docs/sales-workflow.md](docs/sales-workflow.md)                         | Sequential | Architecture, catalog index schema, tool schemas, config reference  |
+| [docs/customer-service-workflow.md](docs/customer-service-workflow.md)   | Handoff    | Triage topology, tool schemas, HITL escalation extension point      |
+| [docs/after-sale-report-workflow.md](docs/after-sale-report-workflow.md) | Concurrent | Fan-out/fan-in topology, aggregator delegate, report format         |
+| [docs/orchestrator-workflow.md](docs/orchestrator-workflow.md)           | GroupChat  | LLM routing logic, participant registration, when-to-use comparison |
 
 ---
 
@@ -52,6 +54,7 @@ src/
     SalesWorkflowAgent.cs      — Sequential: catalog-retriever → stock-checker → sales-responder
     CustomerServiceWorkflowAgent.cs — Handoff: triage-agent → billing-specialist | shipping-specialist
     AfterSaleReportWorkflowAgent.cs — Concurrent: sales-analyst ∥ satisfaction-analyst → merged report
+    OrchestratorAgent.cs           — GroupChat: LLM-driven routing to the correct workflow agent
   Services/
     EcommerceIndexService.cs   — creates product-catalog index if absent; embeds + uploads products
   Infrastructure/
@@ -63,6 +66,7 @@ docs/
   sales-workflow.md                — Sequential pattern: prerequisites, architecture, catalog schema, config
   customer-service-workflow.md     — Handoff pattern: triage topology, HITL escalation, seeded data
   after-sale-report-workflow.md    — Concurrent pattern: fan-out/fan-in, aggregator delegate, report format
+  orchestrator-workflow.md         — GroupChat pattern: LLM routing, participant registration, termination
 ```
 
 ---
@@ -161,6 +165,7 @@ On first startup, `EcommerceIndexService` creates the `product-catalog` index an
 | `/agents/sales-workflow`    | POST   | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder |
 | `/agents/customer-service`  | POST   | Handoff    | triage-agent → billing-specialist \| shipping-specialist             |
 | `/agents/after-sale-report` | POST   | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report           |
+| `/agents`                   | POST   | GroupChat  | Orchestrator — LLM routes to the correct workflow agent              |
 | `/health`                   | GET    | —          | Catalog index connectivity probe                                     |
 
 ### Request / Response

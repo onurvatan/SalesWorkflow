@@ -97,6 +97,20 @@ app.MapPost("/agents/after-sale-report",
     .WithName("RunAfterSaleReport")
     .WithSummary("Concurrent workflow — sales-analyst ‖ satisfaction-analyst → merged admin report");
 
+// ─── Orchestrator ────────────────────────────────────────────────
+// OrchestratorAgent is a GroupChat workflow with LLM-driven routing:
+//   OrchestratorGroupChatManager classifies intent → selects participant:
+//     CustomerServiceWorkflowAgent | AfterSaleReportWorkflowAgent | SalesWorkflowAgent
+app.MapPost("/agents",
+    async (ChatRequest req, [FromKeyedServices("OrchestratorAgent")] AIAgent agent) =>
+    {
+        var result = await agent.RunAsync(
+            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        return Results.Ok(new { agentName = "OrchestratorAgent", result = result.Text });
+    })
+    .WithName("RunOrchestrator")
+    .WithSummary("GroupChat orchestrator — routes prompt to CustomerService | AfterSaleReport | SalesWorkflow");
+
 app.Run();
 
 // Expose Program to WebApplicationFactory in integration tests

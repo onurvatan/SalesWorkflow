@@ -12,7 +12,7 @@ public class CustomerSatisfactionToolTests
     public void Create_ReturnsFunction_WithCorrectName()
     {
         var tool = CustomerSatisfactionTool.Create(_customers);
-        Assert.Equal("customer_satisfaction_report", tool.Metadata.Name);
+        Assert.Equal("customer_satisfaction_report", tool.Name);
     }
 
     [Fact]

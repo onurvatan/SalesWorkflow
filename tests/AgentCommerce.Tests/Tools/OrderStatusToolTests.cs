@@ -12,7 +12,7 @@ public class OrderStatusToolTests
     public void Create_ReturnsFunction_WithCorrectName()
     {
         var tool = OrderStatusTool.Create(_orders);
-        Assert.Equal("order_status", tool.Metadata.Name);
+        Assert.Equal("order_status", tool.Name);
     }
 
     [Fact]

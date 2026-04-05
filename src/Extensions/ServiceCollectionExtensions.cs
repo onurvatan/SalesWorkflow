@@ -7,6 +7,7 @@ using SalesWorkflow.Configuration;
 using SalesWorkflow.Data;
 using SalesWorkflow.Services;
 using SalesWorkflow.Infrastructure;
+using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Hosting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -49,6 +50,9 @@ public static class ServiceCollectionExtensions
         // These agents depend only on IChatClient + in-memory repos — always registered
         AddCustomerServiceAgent(builder);
         AddAfterSaleReportAgent(builder);
+
+        // Orchestrator is registered last so keyed participants are already in the container
+        AddOrchestratorAgent(builder, catalogConfigured);
 
         return builder;
     }
@@ -167,6 +171,33 @@ public static class ServiceCollectionExtensions
         builder.AddAIAgent(
             AfterSaleReportWorkflowAgent.AgentName,
             (sp, name) => sp.GetRequiredService<AfterSaleReportWorkflowAgent>().CreateAgent(name),
+            ServiceLifetime.Singleton);
+    }
+
+    private static void AddOrchestratorAgent(WebApplicationBuilder builder, bool hasCatalog)
+    {
+        builder.Services.AddSingleton<OrchestratorAgent>();
+
+        // ── OrchestratorAgent — GroupChat workflow ────────────────────────
+        // OrchestratorGroupChatManager uses the LLM to classify intent and
+        // selects the appropriate sub-workflow as the next GroupChat speaker.
+        // Participants are resolved from DI at factory time; SalesWorkflowAgent
+        // is only included when the catalog index is configured.
+        builder.AddAIAgent(
+            OrchestratorAgent.AgentName,
+            (sp, name) =>
+            {
+                var participants = new List<AIAgent>
+                {
+                    sp.GetRequiredKeyedService<AIAgent>(CustomerServiceWorkflowAgent.AgentName),
+                    sp.GetRequiredKeyedService<AIAgent>(AfterSaleReportWorkflowAgent.AgentName),
+                };
+
+                if (hasCatalog)
+                    participants.Add(sp.GetRequiredKeyedService<AIAgent>(SalesWorkflowAgent.AgentName));
+
+                return sp.GetRequiredService<OrchestratorAgent>().CreateAgent(name, participants);
+            },
             ServiceLifetime.Singleton);
     }
 }

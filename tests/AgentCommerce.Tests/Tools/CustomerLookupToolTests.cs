@@ -13,14 +13,14 @@ public class CustomerLookupToolTests
     public void Create_ReturnsFunction_WithCorrectName()
     {
         var tool = CustomerLookupTool.Create(_customers, _orders);
-        Assert.Equal("customer_lookup", tool.Metadata.Name);
+        Assert.Equal("customer_lookup", tool.Name);
     }
 
     [Fact]
     public void Create_ReturnsFunction_WithNonEmptyDescription()
     {
         var tool = CustomerLookupTool.Create(_customers, _orders);
-        Assert.False(string.IsNullOrWhiteSpace(tool.Metadata.Description));
+        Assert.False(string.IsNullOrWhiteSpace(tool.Description));
     }
 
     [Fact]
