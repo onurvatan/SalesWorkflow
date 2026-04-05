@@ -2,19 +2,15 @@ using Azure.AI.OpenAI;
 using Azure.Identity;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
+using SalesWorkflow.Agents;
 using SalesWorkflow.Configuration;
 using SalesWorkflow.Data;
 using SalesWorkflow.Services;
 using SalesWorkflow.Infrastructure;
-using SalesWorkflow.Tools;
-using Microsoft.Agents.AI;
-using Microsoft.Agents.AI.AzureAI;
 using Microsoft.Agents.AI.Hosting;
-using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
-using OpenAI.Chat;
 
 namespace SalesWorkflow.Extensions;
 
@@ -60,6 +56,12 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton(
             new AzureOpenAIClient(new Uri(foundrySettings.Endpoint!), credential));
 
+        // IChatClient — pre-configured with the model deployment for sub-agent construction
+        builder.Services.AddSingleton<IChatClient>(sp =>
+            sp.GetRequiredService<AzureOpenAIClient>()
+                .GetChatClient(foundrySettings.Deployment!)
+                .AsIChatClient());
+
         // IProductRepository is always available — StockCheckTool works without Azure Search
         builder.Services.AddSingleton<IProductRepository, ProductRepository>();
 
@@ -95,44 +97,7 @@ public static class ServiceCollectionExtensions
             // Step 1: catalog-retriever  → finds matching products via vector search
             // Step 2: stock-checker      → verifies availability for each product
             // Step 3: sales-responder    → synthesizes a customer-facing recommendation
-            builder.AddAIAgent("SalesWorkflowAgent", (sp, name) =>
-            {
-                var azClient = sp.GetRequiredService<AzureOpenAIClient>();
-                var settings = sp.GetRequiredService<IOptions<FoundrySettings>>().Value;
-                var catalogClient = sp.GetRequiredKeyedService<SearchClient>("catalog");
-                var repo = sp.GetRequiredService<IProductRepository>();
-
-                var catalogRetriever = azClient
-                    .GetChatClient(settings.Deployment!)
-                    .AsAIAgent(
-                        instructions: "Use the catalog_search tool to find products matching the customer's request. Return the full list of matching products with all details.",
-                        name: "catalog-retriever",
-                        tools: [CatalogSearchTool.Create(
-                            catalogClient,
-                            azClient,
-                            sp.GetRequiredService<IOptions<SalesIndexSettings>>().Value,
-                            settings)]);
-
-                var stockChecker = azClient
-                    .GetChatClient(settings.Deployment!)
-                    .AsAIAgent(
-                        instructions: "For each product mentioned in the previous message, use the stock_check tool to verify its current availability and price. Report the results.",
-                        name: "stock-checker",
-                        tools: [StockCheckTool.Create(repo)]);
-
-                var salesResponder = azClient
-                    .GetChatClient(settings.Deployment!)
-                    .AsAIAgent(
-                        instructions: "You are a friendly sales assistant. Using the catalog details and stock information provided, write a helpful recommendation for the customer. For each product include: name, key specs, price, and availability. Flag Low Stock items. Suggest alternatives for Out of Stock products.",
-                        name: "sales-responder");
-
-                var workflow = AgentWorkflowBuilder.BuildSequential(name, [catalogRetriever, stockChecker, salesResponder]);
-                return workflow.AsAIAgent(name, name,
-                    "Sequential sales workflow: catalog-retriever → stock-checker → sales-responder.",
-                    InProcessExecution.OffThread,
-                    includeExceptionDetails: false,
-                    includeWorkflowOutputsInResponse: false);
-            }, ServiceLifetime.Singleton);
+            builder.AddAIAgent("SalesWorkflowAgent", SalesWorkflowAgent.Create, ServiceLifetime.Singleton);
         }
 
         return builder;

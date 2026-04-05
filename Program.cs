@@ -68,3 +68,6 @@ app.MapPost("/agents/sales-workflow",
     .WithSummary("Workflow agent — catalog-retriever → stock-checker → sales-responder (sequential)");
 
 app.Run();
+
+// Expose Program to WebApplicationFactory in integration tests
+public partial class Program { }
