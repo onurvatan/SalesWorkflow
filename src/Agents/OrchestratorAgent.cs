@@ -2,6 +2,7 @@
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
 namespace SalesWorkflow.Agents;
 
@@ -29,11 +30,16 @@ public class OrchestratorGroupChatManager : GroupChatManager
 {
     private readonly IChatClient _chatClient;
     private readonly IReadOnlyList<AIAgent> _participants;
+    private readonly ILogger<OrchestratorGroupChatManager> _logger;
 
-    public OrchestratorGroupChatManager(IChatClient chatClient, IReadOnlyList<AIAgent> participants)
+    public OrchestratorGroupChatManager(
+        IChatClient chatClient,
+        IReadOnlyList<AIAgent> participants,
+        ILogger<OrchestratorGroupChatManager>? logger = null)
     {
         _chatClient = chatClient;
         _participants = participants;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<OrchestratorGroupChatManager>.Instance;
         MaximumIterationCount = 3;
     }
 
@@ -66,14 +72,25 @@ public class OrchestratorGroupChatManager : GroupChatManager
 
         var chosen = response.Text?.Trim() ?? string.Empty;
 
+        _logger.LogDebug("Orchestrator LLM routing response: '{Chosen}'", chosen);
+
         // Match by name (case-insensitive, allow partial e.g. "CustomerService")
         var match = _participants.FirstOrDefault(p =>
             string.Equals(p.Name, chosen, StringComparison.OrdinalIgnoreCase)
             || (p.Name?.Contains(chosen, StringComparison.OrdinalIgnoreCase) ?? false)
             || (chosen.Contains(p.Name ?? string.Empty, StringComparison.OrdinalIgnoreCase)));
 
-        // Fallback to first participant if nothing matched
-        return match ?? _participants[0];
+        var selected = match ?? _participants[0];
+        var isFallback = match is null;
+
+        _logger.LogInformation(
+            "[Orchestrator] Routing decision (turn {Turn}/{Max}): '{Selected}'{Fallback}",
+            IterationCount + 1,
+            MaximumIterationCount,
+            selected.Name,
+            isFallback ? " [fallback — LLM returned unrecognised name]" : string.Empty);
+
+        return selected;
     }
 
     /// <summary>
@@ -85,11 +102,17 @@ public class OrchestratorGroupChatManager : GroupChatManager
         CancellationToken cancellationToken)
     {
         if (IterationCount >= MaximumIterationCount)
+        {
+            _logger.LogInformation("[Orchestrator] Terminating — max iterations ({Max}) reached.", MaximumIterationCount);
             return ValueTask.FromResult(true);
+        }
 
         var lastAssistant = history.LastOrDefault(m => m.Role == ChatRole.Assistant);
         if (lastAssistant?.Text?.Contains("[DONE]", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            _logger.LogInformation("[Orchestrator] Terminating — [DONE] sentinel detected in last assistant message.");
             return ValueTask.FromResult(true);
+        }
 
         return ValueTask.FromResult(false);
     }
@@ -121,10 +144,13 @@ public class OrchestratorAgent(IChatClient chatClient)
     public const string WorkflowDescription =
         "GroupChat orchestrator: routes prompts to CustomerServiceWorkflow | AfterSaleReportWorkflow | SalesWorkflow.";
 
-    public AIAgent CreateAgent(string name, IReadOnlyList<AIAgent> participants)
+    public AIAgent CreateAgent(
+        string name,
+        IReadOnlyList<AIAgent> participants,
+        ILogger<OrchestratorGroupChatManager>? logger = null)
     {
         var workflow = AgentWorkflowBuilder
-            .CreateGroupChatBuilderWith(p => new OrchestratorGroupChatManager(chatClient, p))
+            .CreateGroupChatBuilderWith(p => new OrchestratorGroupChatManager(chatClient, p, logger))
             .AddParticipants(participants)
             .WithName(name)
             .WithDescription(WorkflowDescription)

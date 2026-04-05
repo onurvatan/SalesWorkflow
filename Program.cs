@@ -58,10 +58,14 @@ app.MapOpenAIConversations();
 // SalesWorkflowAgent is a 3-step sequential workflow:
 //   catalog-retriever → stock-checker → sales-responder
 app.MapPost("/agents/sales-workflow",
-    async (ChatRequest req, [FromKeyedServices("SalesWorkflowAgent")] AIAgent agent) =>
+    async (ChatRequest req,
+           [FromKeyedServices("SalesWorkflowAgent")] AIAgent agent,
+           ILogger<Program> logger) =>
     {
+        logger.LogInformation("[SalesWorkflowAgent] Received: {Input}", req.Input);
         var result = await agent.RunAsync(
             [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        logger.LogInformation("[SalesWorkflowAgent] Completed.");
         return Results.Ok(new { agentName = "SalesWorkflowAgent", result = result.Text });
     })
     .WithName("RunSalesWorkflow")
@@ -73,10 +77,14 @@ app.MapPost("/agents/sales-workflow",
 // The triage agent classifies the customer's issue and routes them to
 // the appropriate specialist. Billing specialist can escalate to human.
 app.MapPost("/agents/customer-service",
-    async (ChatRequest req, [FromKeyedServices("CustomerServiceWorkflowAgent")] AIAgent agent) =>
+    async (ChatRequest req,
+           [FromKeyedServices("CustomerServiceWorkflowAgent")] AIAgent agent,
+           ILogger<Program> logger) =>
     {
+        logger.LogInformation("[CustomerServiceWorkflowAgent] Received: {Input}", req.Input);
         var result = await agent.RunAsync(
             [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        logger.LogInformation("[CustomerServiceWorkflowAgent] Completed.");
         return Results.Ok(new { agentName = "CustomerServiceWorkflowAgent", result = result.Text });
     })
     .WithName("RunCustomerService")
@@ -88,10 +96,14 @@ app.MapPost("/agents/customer-service",
 // Both analysts execute in parallel; the aggregator merges their
 // outputs into a single report for admin consumption.
 app.MapPost("/agents/after-sale-report",
-    async (ChatRequest req, [FromKeyedServices("AfterSaleReportWorkflowAgent")] AIAgent agent) =>
+    async (ChatRequest req,
+           [FromKeyedServices("AfterSaleReportWorkflowAgent")] AIAgent agent,
+           ILogger<Program> logger) =>
     {
+        logger.LogInformation("[AfterSaleReportWorkflowAgent] Received: {Input}", req.Input);
         var result = await agent.RunAsync(
             [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        logger.LogInformation("[AfterSaleReportWorkflowAgent] Completed.");
         return Results.Ok(new { agentName = "AfterSaleReportWorkflowAgent", result = result.Text });
     })
     .WithName("RunAfterSaleReport")
@@ -102,10 +114,14 @@ app.MapPost("/agents/after-sale-report",
 //   OrchestratorGroupChatManager classifies intent → selects participant:
 //     CustomerServiceWorkflowAgent | AfterSaleReportWorkflowAgent | SalesWorkflowAgent
 app.MapPost("/agents",
-    async (ChatRequest req, [FromKeyedServices("OrchestratorAgent")] AIAgent agent) =>
+    async (ChatRequest req,
+           [FromKeyedServices("OrchestratorAgent")] AIAgent agent,
+           ILogger<Program> logger) =>
     {
+        logger.LogInformation("[OrchestratorAgent] Received: {Input}", req.Input);
         var result = await agent.RunAsync(
             [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
+        logger.LogInformation("[OrchestratorAgent] Completed.");
         return Results.Ok(new { agentName = "OrchestratorAgent", result = result.Text });
     })
     .WithName("RunOrchestrator")

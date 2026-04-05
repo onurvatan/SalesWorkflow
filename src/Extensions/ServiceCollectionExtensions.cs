@@ -11,6 +11,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Hosting;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace SalesWorkflow.Extensions;
@@ -196,7 +197,10 @@ public static class ServiceCollectionExtensions
                 if (hasCatalog)
                     participants.Add(sp.GetRequiredKeyedService<AIAgent>(SalesWorkflowAgent.AgentName));
 
-                return sp.GetRequiredService<OrchestratorAgent>().CreateAgent(name, participants);
+                return sp.GetRequiredService<OrchestratorAgent>().CreateAgent(
+                    name,
+                    participants,
+                    sp.GetRequiredService<ILogger<OrchestratorGroupChatManager>>());
             },
             ServiceLifetime.Singleton);
     }
