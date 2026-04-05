@@ -6,10 +6,8 @@ using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
-namespace SalesWorkflow.Ecommerce;
+namespace SalesWorkflow.Services;
 
 public class EcommerceIndexService(
     SearchIndexClient indexClient,

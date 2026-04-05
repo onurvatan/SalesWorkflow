@@ -2,12 +2,9 @@
 
 A .NET 10 Web API for an AI-powered e-commerce sales assistant built with the **Microsoft Agent Framework** and **Azure AI Search** vector embeddings.
 
-Two agents are available:
-
-| Agent                | Endpoint                      | Description                                                                                                                                                      |
-| -------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SalesAgent`         | `POST /agents/sales`          | Single agent with two tools: `catalog_search` (Azure AI Search vector) + `stock_check` (in-memory); the LLM decides whether to call them in parallel or sequence |
-| `SalesWorkflowAgent` | `POST /agents/sales-workflow` | 3-step sequential workflow: catalog-retriever → stock-checker → sales-responder                                                                                  |
+| Agent                | Endpoint                      | Description                                                                     |
+| -------------------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| `SalesWorkflowAgent` | `POST /agents/sales-workflow` | 3-step sequential workflow: catalog-retriever → stock-checker → sales-responder |
 
 Both agents are visible in the **Agent Framework DevUI** at `/devui` (development only).
 
@@ -21,8 +18,6 @@ See [docs/sales-workflow.md](docs/sales-workflow.md) for full architecture diagr
 
 ```
 src/
-  Agents/
-    SalesAgent.cs              — agent name and instructions constant
   Configuration/
     FoundrySettings.cs         — Azure OpenAI endpoint + deployment names
     AzureSearchSettings.cs     — search service endpoint
@@ -34,7 +29,7 @@ src/
   Tools/
     CatalogSearchTool.cs       — AIFunction: embed query → vector k-NN search on product-catalog
     StockCheckTool.cs          — AIFunction: in-memory stock lookup with availability status
-  Ecommerce/
+  Services/
     EcommerceIndexService.cs   — creates product-catalog index if absent; embeds + uploads products
   Infrastructure/
     AzureSearchHealthCheck.cs  — IHealthCheck: lightweight 0-result probe on catalog index

@@ -1,6 +1,5 @@
-using SalesWorkflow.Agents;
 using SalesWorkflow.Data;
-using SalesWorkflow.Ecommerce;
+using SalesWorkflow.Services;
 using SalesWorkflow.Extensions;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.DevUI;
@@ -54,20 +53,8 @@ app.MapHealthChecks("/health");
 app.MapOpenAIResponses();
 app.MapOpenAIConversations();
 
-// ─── Pattern 4: E-Commerce Sales Agent ─────────────────────────────────────
-// SalesAgent uses two tools in a single turn: catalog_search (vector) + stock_check (in-memory).
-// The LLM decides whether to call them in parallel or sequence based on the user's question.
-app.MapPost("/agents/sales",
-    async (ChatRequest req, [FromKeyedServices(SalesAgent.AgentName)] AIAgent agent) =>
-    {
-        var result = await agent.RunAsync(
-            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
-        return Results.Ok(new { agentName = SalesAgent.AgentName, result = result.Text });
-    })
-    .WithName("RunSalesAgent")
-    .WithSummary("Single agent — SalesAgent with catalog_search and stock_check tools");
 
-// ─── Pattern 5: Sales Workflow Agent ────────────────────────────────────────
+// ─── Sales Workflow Agent ────────────────────────────────────────
 // SalesWorkflowAgent is a 3-step sequential workflow:
 //   catalog-retriever → stock-checker → sales-responder
 app.MapPost("/agents/sales-workflow",
@@ -81,5 +68,3 @@ app.MapPost("/agents/sales-workflow",
     .WithSummary("Workflow agent — catalog-retriever → stock-checker → sales-responder (sequential)");
 
 app.Run();
-
-public record ChatRequest(string Input);

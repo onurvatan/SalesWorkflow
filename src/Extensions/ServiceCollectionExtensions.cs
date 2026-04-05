@@ -2,10 +2,9 @@ using Azure.AI.OpenAI;
 using Azure.Identity;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
-using SalesWorkflow.Agents;
 using SalesWorkflow.Configuration;
 using SalesWorkflow.Data;
-using SalesWorkflow.Ecommerce;
+using SalesWorkflow.Services;
 using SalesWorkflow.Infrastructure;
 using SalesWorkflow.Tools;
 using Microsoft.Agents.AI;
@@ -91,27 +90,6 @@ public static class ServiceCollectionExtensions
                 sp => new AzureSearchHealthCheck(sp.GetRequiredKeyedService<SearchClient>("catalog")),
                 failureStatus: HealthStatus.Degraded,
                 tags: ["catalog", "search"]));
-
-            // ── SalesAgent — single agent with two parallel-callable tools ───────
-            var salesAgentBuilder = builder.AddAIAgent(SalesAgent.AgentName, (sp, name) =>
-            {
-                var azClient = sp.GetRequiredService<AzureOpenAIClient>();
-                var settings = sp.GetRequiredService<IOptions<FoundrySettings>>().Value;
-                return azClient
-                    .GetChatClient(settings.Deployment!)
-                    .AsAIAgent(instructions: SalesAgent.Instructions, name: name);
-            }, ServiceLifetime.Singleton);
-
-            salesAgentBuilder.WithAITool(sp =>
-                (AITool)CatalogSearchTool.Create(
-                    sp.GetRequiredKeyedService<SearchClient>("catalog"),
-                    sp.GetRequiredService<AzureOpenAIClient>(),
-                    sp.GetRequiredService<IOptions<SalesIndexSettings>>().Value,
-                    sp.GetRequiredService<IOptions<FoundrySettings>>().Value));
-
-            salesAgentBuilder.WithAITool(sp =>
-                (AITool)StockCheckTool.Create(
-                    sp.GetRequiredService<IProductRepository>()));
 
             // ── SalesWorkflowAgent — 3-step sequential workflow ─────────────────
             // Step 1: catalog-retriever  → finds matching products via vector search
