@@ -11,7 +11,7 @@ Two agents are available:
 
 Both agents are visible in the **Agent Framework DevUI** at `/devui` (development only).
 
-<img width="2718" height="1300" alt="image" src="https://github.com/user-attachments/assets/bf40d370-4505-41db-a7ee-9da90a41a647" />
+<img width="2735" height="1491" alt="image" src="https://github.com/user-attachments/assets/7639ee81-c61e-402a-8997-4966910224f5" />
 
 See [docs/sales-workflow.md](docs/sales-workflow.md) for full architecture diagrams, tool schemas, and configuration reference.
 
