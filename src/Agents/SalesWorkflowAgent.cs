@@ -11,7 +11,13 @@ using SalesWorkflow.Tools;
 
 namespace SalesWorkflow.Agents;
 
-public static class SalesWorkflowAgent
+public class SalesWorkflowAgent(
+    IChatClient chatClient,
+    AzureOpenAIClient azClient,
+    IProductRepository repo,
+    [FromKeyedServices("catalog")] SearchClient catalogClient,
+    IOptions<SalesIndexSettings> indexSettings,
+    IOptions<FoundrySettings> settings)
 {
     public const string AgentName = "SalesWorkflowAgent";
 
@@ -27,19 +33,12 @@ public static class SalesWorkflowAgent
     public const string SalesResponderInstructions =
         "You are a friendly sales assistant. Using the catalog details and stock information provided, write a helpful recommendation for the customer. For each product include: name, key specs, price, and availability. Flag Low Stock items. Suggest alternatives for Out of Stock products.";
 
-    public static AIAgent Create(IServiceProvider sp, string name)
+    public AIAgent CreateAgent(string name)
     {
-        var chatClient = sp.GetRequiredService<IChatClient>();
-        var azClient = sp.GetRequiredService<AzureOpenAIClient>();
-        var settings = sp.GetRequiredService<IOptions<FoundrySettings>>().Value;
-        var indexSettings = sp.GetRequiredService<IOptions<SalesIndexSettings>>().Value;
-        var catalogClient = sp.GetRequiredKeyedService<SearchClient>("catalog");
-        var repo = sp.GetRequiredService<IProductRepository>();
-
         var catalogRetriever = chatClient.AsAIAgent(
             instructions: CatalogRetrieverInstructions,
             name: "catalog-retriever",
-            tools: [CatalogSearchTool.Create(catalogClient, azClient, indexSettings, settings)]);
+            tools: [CatalogSearchTool.Create(catalogClient, azClient, indexSettings.Value, settings.Value)]);
 
         var stockChecker = chatClient.AsAIAgent(
             instructions: StockCheckerInstructions,
