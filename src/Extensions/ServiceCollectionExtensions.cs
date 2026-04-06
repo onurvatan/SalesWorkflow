@@ -13,6 +13,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SalesWorkflow.Extensions;
 
@@ -52,8 +53,9 @@ public static class ServiceCollectionExtensions
         AddCustomerServiceAgent(builder);
         AddAfterSaleReportAgent(builder);
 
-        // Orchestrator is registered last so keyed participants are already in the container
+        // Orchestrators registered last so keyed participants are already in the container
         AddOrchestratorAgent(builder, catalogConfigured);
+        AddBackOfficeOrchestratorAgent(builder);
 
         return builder;
     }
@@ -65,6 +67,10 @@ public static class ServiceCollectionExtensions
             .Bind(builder.Configuration.GetSection("Foundry"))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        builder.Services
+            .AddOptions<BackOfficeSettings>()
+            .Bind(builder.Configuration.GetSection("BackOffice"));
 
         builder.Services
             .AddOptions<AzureSearchSettings>()
@@ -214,13 +220,36 @@ public static class ServiceCollectionExtensions
                 var participants = new List<AIAgent>
                 {
                     customerServiceForOrchestrator,
-                    sp.GetRequiredKeyedService<AIAgent>(AfterSaleReportWorkflowAgent.AgentName),
                 };
 
                 if (hasCatalog)
                     participants.Add(sp.GetRequiredKeyedService<AIAgent>(SalesWorkflowAgent.AgentName));
 
                 return sp.GetRequiredService<OrchestratorAgent>().CreateAgent(
+                    name,
+                    participants,
+                    sp.GetRequiredService<ILogger<OrchestratorGroupChatManager>>());
+            },
+            ServiceLifetime.Singleton);
+    }
+
+    private static void AddBackOfficeOrchestratorAgent(WebApplicationBuilder builder)
+    {
+        builder.Services.AddSingleton<BackOfficeOrchestratorAgent>();
+
+        // ── BackOfficeOrchestratorAgent — GroupChat workflow (admin-only) ──
+        // Participants: AfterSaleReportWorkflowAgent (always available).
+        // Exposed via POST /admin/agents, protected by API key auth.
+        builder.AddAIAgent(
+            BackOfficeOrchestratorAgent.AgentName,
+            (sp, name) =>
+            {
+                var participants = new List<AIAgent>
+                {
+                    sp.GetRequiredKeyedService<AIAgent>(AfterSaleReportWorkflowAgent.AgentName),
+                };
+
+                return sp.GetRequiredService<BackOfficeOrchestratorAgent>().CreateAgent(
                     name,
                     participants,
                     sp.GetRequiredService<ILogger<OrchestratorGroupChatManager>>());

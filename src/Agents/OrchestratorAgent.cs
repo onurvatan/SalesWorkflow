@@ -125,15 +125,14 @@ public class OrchestratorGroupChatManager : GroupChatManager
 }
 
 /// <summary>
-/// Orchestrator workflow using the <b>GroupChat</b> pattern.
+/// Customer-facing orchestrator workflow using the <b>GroupChat</b> pattern.
 /// <para>
-/// A single <c>POST /agents</c> entry point accepts any prompt. The
+/// A single <c>POST /agents</c> entry point accepts any customer prompt. The
 /// <see cref="OrchestratorGroupChatManager"/> uses the LLM to classify intent and
 /// delegates to the appropriate workflow agent as the next speaker:
 /// </para>
 /// <list type="bullet">
 ///   <item><b>CustomerServiceWorkflowAgent</b> — billing disputes, shipping issues, order status</item>
-///   <item><b>AfterSaleReportWorkflowAgent</b> — admin sales/CSAT reports</item>
 ///   <item><b>SalesWorkflowAgent</b> — product search (registered only when catalog is configured)</item>
 /// </list>
 /// </summary>
@@ -142,7 +141,7 @@ public class OrchestratorAgent(IChatClient chatClient)
     public const string AgentName = "OrchestratorAgent";
 
     public const string WorkflowDescription =
-        "GroupChat orchestrator: routes prompts to CustomerServiceWorkflow | AfterSaleReportWorkflow | SalesWorkflow.";
+        "GroupChat orchestrator: routes customer prompts to CustomerServiceWorkflow | SalesWorkflow.";
 
     public AIAgent CreateAgent(
         string name,

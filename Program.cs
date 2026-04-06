@@ -1,9 +1,11 @@
 using SalesWorkflow.Data;
 using SalesWorkflow.Services;
 using SalesWorkflow.Extensions;
+using SalesWorkflow.Infrastructure;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.DevUI;
 using Microsoft.Extensions.AI;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,7 +13,38 @@ builder.AddSalesWorkflowApp();
 builder.AddDevUI();
 builder.AddOpenAIResponses();
 builder.AddOpenAIConversations();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    // Declare X-Api-Key as an API key security scheme so Swagger UI shows the Authorize button
+    options.AddDocumentTransformer((doc, _, _) =>
+    {
+        doc.Components ??= new OpenApiComponents();
+        doc.Components.SecuritySchemes!["ApiKey"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.ApiKey,
+            In = ParameterLocation.Header,
+            Name = "X-Api-Key",
+            Description = "Required for /admin/* endpoints. Enter your back-office API key."
+        };
+        return Task.CompletedTask;
+    });
+
+    options.AddOperationTransformer((operation, context, _) =>
+    {
+        // Apply the security requirement only to /admin/* routes
+        if (context.Description.RelativePath?.StartsWith("admin/", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            operation.Security =
+            [
+                new OpenApiSecurityRequirement
+                {
+                    [new OpenApiSecuritySchemeReference("ApiKey")] = []
+                }
+            ];
+        }
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddSwaggerUI();
 
 var app = builder.Build();
@@ -171,7 +204,7 @@ app.MapPost("/agents/after-sale-report",
 // ─── Orchestrator ────────────────────────────────────────────────
 // OrchestratorAgent is a GroupChat workflow with LLM-driven routing:
 //   OrchestratorGroupChatManager classifies intent → selects participant:
-//     CustomerServiceWorkflowAgent | AfterSaleReportWorkflowAgent | SalesWorkflowAgent
+//     CustomerServiceWorkflowAgent | SalesWorkflowAgent
 app.MapPost("/agents",
     async (ChatRequest req,
            [FromKeyedServices("OrchestratorAgent")] AIAgent agent,
@@ -197,7 +230,40 @@ app.MapPost("/agents",
         }
     })
     .WithName("RunOrchestrator")
-    .WithSummary("GroupChat orchestrator — routes prompt to CustomerService | AfterSaleReport | SalesWorkflow");
+    .WithSummary("GroupChat orchestrator — routes customer prompt to CustomerService | SalesWorkflow");
+
+// ─── Back-Office (admin, API-key protected) ─────────────────────
+// BackOfficeOrchestratorAgent routes admin prompts to AfterSaleReportWorkflowAgent.
+// All /admin/* routes require the X-Api-Key header matching BackOffice:ApiKey in config.
+var adminGroup = app.MapGroup("/admin")
+    .AddEndpointFilter<ApiKeyEndpointFilter>();
+
+adminGroup.MapPost("/agents",
+    async (ChatRequest req,
+           [FromKeyedServices("BackOfficeOrchestratorAgent")] AIAgent agent,
+           IConversationHistoryStore store,
+           ILogger<Program> logger) =>
+    {
+        var sessionId = req.SessionId ?? Guid.NewGuid().ToString("N");
+        logger.LogInformation("[BackOfficeOrchestratorAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
+        try
+        {
+            var history = store.GetOrCreate(sessionId);
+            history.Add(new ChatMessage(ChatRole.User, req.Input));
+            var result = await agent.RunAsync(history, null, null, default);
+            history.Add(new ChatMessage(ChatRole.Assistant, result.Text ?? string.Empty));
+            store.Save(sessionId, history);
+            logger.LogInformation("[BackOfficeOrchestratorAgent] Session={SessionId} Completed.", sessionId);
+            return Results.Ok(new { agentName = "BackOfficeOrchestratorAgent", sessionId, result = result.Text });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[BackOfficeOrchestratorAgent] Session={SessionId} Execution failed.", sessionId);
+            return Results.Problem(ex.Message, statusCode: 500);
+        }
+    })
+    .WithName("RunBackOfficeOrchestrator")
+    .WithSummary("Admin GroupChat orchestrator — routes back-office prompts to AfterSaleReport (requires X-Api-Key)");
 
 // ─── Session management ──────────────────────────────────────────
 // DELETE /sessions/{sessionId} — clear conversation history for a session.
