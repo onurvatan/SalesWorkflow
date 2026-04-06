@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Xunit;
 
 namespace SalesWorkflow.Tests.Integration;
@@ -37,5 +38,19 @@ public class AfterSaleReportEndpointTests(WebApplicationFactory<Program> factory
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("AfterSaleReportWorkflowAgent", body);
+    }
+
+    [Fact]
+    public async Task PostAfterSaleReport_ResponseIncludesSessionId()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/agents/after-sale-report",
+            new { input = "Weekly report please" });
+
+        response.EnsureSuccessStatusCode();
+        var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(doc.RootElement.TryGetProperty("sessionId", out var sessionId));
+        Assert.False(string.IsNullOrWhiteSpace(sessionId.GetString()));
     }
 }

@@ -39,6 +39,26 @@ app.Lifetime.ApplicationStarted.Register(() =>
     }
 });
 
+// Intercept unhandled exceptions before the framework's own serializer attempts
+// to serialize the Exception object (which fails on Exception.TargetSite: MethodBase).
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async ctx =>
+    {
+        var feature = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        var ex = feature?.Error;
+        app.Logger.LogError(ex, "Unhandled exception on {Method} {Path}",
+            ctx.Request.Method, ctx.Request.Path);
+        ctx.Response.StatusCode = 500;
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsJsonAsync(new
+        {
+            error = ex?.GetType().Name ?? "UnknownError",
+            message = ex?.Message ?? "An unexpected error occurred"
+        });
+    });
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.MapDevUI();
@@ -60,13 +80,26 @@ app.MapOpenAIConversations();
 app.MapPost("/agents/sales-workflow",
     async (ChatRequest req,
            [FromKeyedServices("SalesWorkflowAgent")] AIAgent agent,
+           IConversationHistoryStore store,
            ILogger<Program> logger) =>
     {
-        logger.LogInformation("[SalesWorkflowAgent] Received: {Input}", req.Input);
-        var result = await agent.RunAsync(
-            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
-        logger.LogInformation("[SalesWorkflowAgent] Completed.");
-        return Results.Ok(new { agentName = "SalesWorkflowAgent", result = result.Text });
+        var sessionId = req.SessionId ?? Guid.NewGuid().ToString("N");
+        logger.LogInformation("[SalesWorkflowAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
+        try
+        {
+            var history = store.GetOrCreate(sessionId);
+            history.Add(new ChatMessage(ChatRole.User, req.Input));
+            var result = await agent.RunAsync(history, null, null, default);
+            history.Add(new ChatMessage(ChatRole.Assistant, result.Text ?? string.Empty));
+            store.Save(sessionId, history);
+            logger.LogInformation("[SalesWorkflowAgent] Session={SessionId} Completed.", sessionId);
+            return Results.Ok(new { agentName = "SalesWorkflowAgent", sessionId, result = result.Text });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[SalesWorkflowAgent] Session={SessionId} Execution failed.", sessionId);
+            return Results.Problem(ex.Message, statusCode: 500);
+        }
     })
     .WithName("RunSalesWorkflow")
     .WithSummary("Workflow agent — catalog-retriever → stock-checker → sales-responder (sequential)");
@@ -79,13 +112,26 @@ app.MapPost("/agents/sales-workflow",
 app.MapPost("/agents/customer-service",
     async (ChatRequest req,
            [FromKeyedServices("CustomerServiceWorkflowAgent")] AIAgent agent,
+           IConversationHistoryStore store,
            ILogger<Program> logger) =>
     {
-        logger.LogInformation("[CustomerServiceWorkflowAgent] Received: {Input}", req.Input);
-        var result = await agent.RunAsync(
-            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
-        logger.LogInformation("[CustomerServiceWorkflowAgent] Completed.");
-        return Results.Ok(new { agentName = "CustomerServiceWorkflowAgent", result = result.Text });
+        var sessionId = req.SessionId ?? Guid.NewGuid().ToString("N");
+        logger.LogInformation("[CustomerServiceWorkflowAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
+        try
+        {
+            var history = store.GetOrCreate(sessionId);
+            history.Add(new ChatMessage(ChatRole.User, req.Input));
+            var result = await agent.RunAsync(history, null, null, default);
+            history.Add(new ChatMessage(ChatRole.Assistant, result.Text ?? string.Empty));
+            store.Save(sessionId, history);
+            logger.LogInformation("[CustomerServiceWorkflowAgent] Session={SessionId} Completed.", sessionId);
+            return Results.Ok(new { agentName = "CustomerServiceWorkflowAgent", sessionId, result = result.Text });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[CustomerServiceWorkflowAgent] Session={SessionId} Execution failed.", sessionId);
+            return Results.Problem(ex.Message, statusCode: 500);
+        }
     })
     .WithName("RunCustomerService")
     .WithSummary("Handoff workflow — triage-agent → billing-specialist | shipping-specialist");
@@ -98,13 +144,26 @@ app.MapPost("/agents/customer-service",
 app.MapPost("/agents/after-sale-report",
     async (ChatRequest req,
            [FromKeyedServices("AfterSaleReportWorkflowAgent")] AIAgent agent,
+           IConversationHistoryStore store,
            ILogger<Program> logger) =>
     {
-        logger.LogInformation("[AfterSaleReportWorkflowAgent] Received: {Input}", req.Input);
-        var result = await agent.RunAsync(
-            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
-        logger.LogInformation("[AfterSaleReportWorkflowAgent] Completed.");
-        return Results.Ok(new { agentName = "AfterSaleReportWorkflowAgent", result = result.Text });
+        var sessionId = req.SessionId ?? Guid.NewGuid().ToString("N");
+        logger.LogInformation("[AfterSaleReportWorkflowAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
+        try
+        {
+            var history = store.GetOrCreate(sessionId);
+            history.Add(new ChatMessage(ChatRole.User, req.Input));
+            var result = await agent.RunAsync(history, null, null, default);
+            history.Add(new ChatMessage(ChatRole.Assistant, result.Text ?? string.Empty));
+            store.Save(sessionId, history);
+            logger.LogInformation("[AfterSaleReportWorkflowAgent] Session={SessionId} Completed.", sessionId);
+            return Results.Ok(new { agentName = "AfterSaleReportWorkflowAgent", sessionId, result = result.Text });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[AfterSaleReportWorkflowAgent] Session={SessionId} Execution failed.", sessionId);
+            return Results.Problem(ex.Message, statusCode: 500);
+        }
     })
     .WithName("RunAfterSaleReport")
     .WithSummary("Concurrent workflow — sales-analyst ‖ satisfaction-analyst → merged admin report");
@@ -116,16 +175,48 @@ app.MapPost("/agents/after-sale-report",
 app.MapPost("/agents",
     async (ChatRequest req,
            [FromKeyedServices("OrchestratorAgent")] AIAgent agent,
+           IConversationHistoryStore store,
            ILogger<Program> logger) =>
     {
-        logger.LogInformation("[OrchestratorAgent] Received: {Input}", req.Input);
-        var result = await agent.RunAsync(
-            [new ChatMessage(ChatRole.User, req.Input)], null, null, default);
-        logger.LogInformation("[OrchestratorAgent] Completed.");
-        return Results.Ok(new { agentName = "OrchestratorAgent", result = result.Text });
+        var sessionId = req.SessionId ?? Guid.NewGuid().ToString("N");
+        logger.LogInformation("[OrchestratorAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
+        try
+        {
+            var history = store.GetOrCreate(sessionId);
+            history.Add(new ChatMessage(ChatRole.User, req.Input));
+            var result = await agent.RunAsync(history, null, null, default);
+            history.Add(new ChatMessage(ChatRole.Assistant, result.Text ?? string.Empty));
+            store.Save(sessionId, history);
+            logger.LogInformation("[OrchestratorAgent] Session={SessionId} Completed.", sessionId);
+            return Results.Ok(new { agentName = "OrchestratorAgent", sessionId, result = result.Text });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[OrchestratorAgent] Session={SessionId} Execution failed.", sessionId);
+            return Results.Problem(ex.Message, statusCode: 500);
+        }
     })
     .WithName("RunOrchestrator")
     .WithSummary("GroupChat orchestrator — routes prompt to CustomerService | AfterSaleReport | SalesWorkflow");
+
+// ─── Session management ──────────────────────────────────────────
+// DELETE /sessions/{sessionId} — clear conversation history for a session.
+// Useful when the user wants to start a fresh conversation without generating
+// a new client-side session ID, or for test teardown.
+app.MapDelete("/sessions/{sessionId}",
+    (string sessionId, IConversationHistoryStore store, ILogger<Program> logger) =>
+    {
+        var deleted = store.Delete(sessionId);
+        if (deleted)
+        {
+            logger.LogInformation("[Session] Cleared session {SessionId}.", sessionId);
+            return Results.NoContent();
+        }
+        logger.LogWarning("[Session] Delete requested for unknown session {SessionId}.", sessionId);
+        return Results.NotFound(new { error = "SessionNotFound", sessionId });
+    })
+    .WithName("DeleteSession")
+    .WithSummary("Clear conversation history for a session. Returns 204 if found, 404 if not.");
 
 app.Run();
 

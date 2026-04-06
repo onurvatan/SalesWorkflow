@@ -2,16 +2,64 @@
 
 A .NET 10 Web API for an AI-powered e-commerce sales assistant built with the **Microsoft Agent Framework** and **Azure AI Search** vector embeddings.
 
-| Agent                          | Endpoint                         | Pattern    | Description                                                               |
-| ------------------------------ | -------------------------------- | ---------- | ------------------------------------------------------------------------- |
-| `SalesWorkflowAgent`           | `POST /agents/sales-workflow`    | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder      |
-| `CustomerServiceWorkflowAgent` | `POST /agents/customer-service`  | Handoff    | triage-agent routes to billing-specialist or shipping-specialist          |
-| `AfterSaleReportWorkflowAgent` | `POST /agents/after-sale-report` | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report                |
-| `OrchestratorAgent`            | `POST /agents`                   | GroupChat  | LLM-driven routing to CustomerService \| AfterSaleReport \| SalesWorkflow |
+| Agent                          | Endpoint                         | Pattern    | Description                                                                                           |
+| ------------------------------ | -------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
+| `OrchestratorAgent`            | `POST /agents`                   | GroupChat  | **Production entry point.** LLM-driven routing to CustomerService \| AfterSaleReport \| SalesWorkflow |
+| `SalesWorkflowAgent`           | `POST /agents/sales-workflow`    | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder                                  |
+| `CustomerServiceWorkflowAgent` | `POST /agents/customer-service`  | Handoff    | triage-agent routes to billing-specialist or shipping-specialist                                      |
+| `AfterSaleReportWorkflowAgent` | `POST /agents/after-sale-report` | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report                                            |
 
-Both agents are visible in the **Agent Framework DevUI** at `/devui` (development only).
+All agents are visible in the **Agent Framework DevUI** at `/devui` (development only).
 
 <img width="2735" height="1491" alt="image" src="https://github.com/user-attachments/assets/7639ee81-c61e-402a-8997-4966910224f5" />
+
+---
+
+## Architecture
+
+The codebase is organized around three layers that map directly to the Microsoft Agent Framework model.
+
+### Workflows
+
+A **workflow** is the wiring between sub-agents — it defines the topology (who runs when) and the termination condition. Each workflow class owns that topology; it has no HTTP concerns of its own.
+
+| Class                          | Pattern        | Topology                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OrchestratorAgent`            | **GroupChat**  | **Production entry point.** `OrchestratorGroupChatManager` sends a routing prompt to the LLM at each turn; the model replies with the name of the participant to invoke next (`CustomerServiceWorkflowAgent`, `AfterSaleReportWorkflowAgent`, or `SalesWorkflowAgent`). Terminates after 3 iterations or when the response contains `[DONE]`. |
+| `SalesWorkflowAgent`           | **Sequential** | `catalog-retriever` → `stock-checker` → `sales-responder` — each step receives the previous step's output as its input; the chain terminates after the final step.                                                                                                                                                                            |
+| `CustomerServiceWorkflowAgent` | **Handoff**    | `triage-agent` classifies intent → hands off to `billing-specialist` or `shipping-specialist`. `EnableReturnToPrevious()` lets a specialist route back to triage for re-classification without restarting the session (disabled when running inside the Orchestrator GroupChat to avoid a serialization incompatibility).                     |
+| `AfterSaleReportWorkflowAgent` | **Concurrent** | `sales-analyst` ∥ `satisfaction-analyst` run in parallel (fan-out), and their outputs are merged by an aggregator delegate into a single admin report (fan-in).                                                                                                                                                                               |
+
+### Sub-agents
+
+Each workflow is composed of **sub-agents** — lightweight `IChatClient` wrappers created with `chatClient.AsAIAgent(instructions, name, tools)`. A sub-agent has a fixed system prompt and an optional tool list; it has no memory of prior turns unless the framework passes history to it.
+
+| Sub-agent              | Workflow        | Role                                                                                                        |
+| ---------------------- | --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `catalog-retriever`    | Sales           | Calls `catalog_search`; returns matching products                                                           |
+| `stock-checker`        | Sales           | Calls `stock_check` for each product; reports availability                                                  |
+| `sales-responder`      | Sales           | Synthesises catalog + stock results into a customer-facing recommendation                                   |
+| `triage-agent`         | CustomerService | Identifies customer + issue via `customer_lookup` + `order_status`; decides which specialist to hand off to |
+| `billing-specialist`   | CustomerService | Handles refunds and billing disputes; calls `escalate_to_human` for high-value cases                        |
+| `shipping-specialist`  | CustomerService | Handles delivery tracking and shipping issues via `order_status`                                            |
+| `sales-analyst`        | AfterSaleReport | Calls `sales_report`; produces revenue and order-status summary                                             |
+| `satisfaction-analyst` | AfterSaleReport | Calls `customer_satisfaction_report`; produces CSAT and at-risk customer summary                            |
+
+### Tools
+
+Tools are `AIFunction` instances exposed to sub-agents via the `tools: [...]` parameter. They are pure functions — no LLM calls, no side effects beyond the in-memory repositories.
+
+| Tool                           | File                          | Used by                                                     | Description                                                                                                                                         |
+| ------------------------------ | ----------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `catalog_search`               | `CatalogSearchTool.cs`        | `catalog-retriever`                                         | Embeds the query with `text-embedding-3-small`, runs a vector k-NN search on the Azure AI Search `product-catalog` index, returns matching products |
+| `stock_check`                  | `StockCheckTool.cs`           | `stock-checker`                                             | Looks up current stock quantity and price from the in-memory `IProductRepository`; returns `In Stock / Low Stock / Out of Stock`                    |
+| `customer_lookup`              | `CustomerLookupTool.cs`       | `triage-agent`                                              | Finds a customer record by name or ID and returns their tier, satisfaction score, and recent order IDs                                              |
+| `order_status`                 | `OrderStatusTool.cs`          | `triage-agent`, `billing-specialist`, `shipping-specialist` | Returns full order details (status, items, total, timestamps) by order ID or customer ID                                                            |
+| `escalate_to_human`            | `EscalateTool.cs`             | `billing-specialist`                                        | HITL escalation stub — generates an `ESC-*` request ID and a simulated response time; extend this to connect to a real ticketing system             |
+| `sales_report`                 | `SalesReportTool.cs`          | `sales-analyst`                                             | Aggregates order data: total revenue, status breakdown, top products by revenue                                                                     |
+| `customer_satisfaction_report` | `CustomerSatisfactionTool.cs` | `satisfaction-analyst`                                      | Aggregates customer satisfaction scores, tier distribution, and at-risk customers (score ≤ 2)                                                       |
+
+---
 
 | Doc                                                                      | Pattern    | Description                                                         |
 | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------- |
@@ -159,14 +207,16 @@ On first startup, `EcommerceIndexService` creates the `product-catalog` index an
 
 ## API Reference
 
-| Endpoint                    | Method | Pattern    | Description                                                          |
-| --------------------------- | ------ | ---------- | -------------------------------------------------------------------- |
-| `/agents/sales`             | POST   | —          | SalesAgent — single turn, two tools                                  |
-| `/agents/sales-workflow`    | POST   | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder |
-| `/agents/customer-service`  | POST   | Handoff    | triage-agent → billing-specialist \| shipping-specialist             |
-| `/agents/after-sale-report` | POST   | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report           |
-| `/agents`                   | POST   | GroupChat  | Orchestrator — LLM routes to the correct workflow agent              |
-| `/health`                   | GET    | —          | Catalog index connectivity probe                                     |
+> **Production vs. testing:** In production, send all requests to `POST /agents` — the `OrchestratorAgent` inspects the message and routes it to the right workflow automatically. The individual workflow endpoints (`/agents/sales-workflow`, `/agents/customer-service`, `/agents/after-sale-report`) bypass routing and invoke a single workflow directly; they exist for isolated testing and development only.
+
+| Endpoint                    | Method | Pattern    | Description                                                                       |
+| --------------------------- | ------ | ---------- | --------------------------------------------------------------------------------- |
+| `/agents`                   | POST   | GroupChat  | **Production.** Orchestrator — LLM routes to the correct workflow agent           |
+| `/agents/sales-workflow`    | POST   | Sequential | **Testing.** 3-step pipeline: catalog-retriever → stock-checker → sales-responder |
+| `/agents/customer-service`  | POST   | Handoff    | **Testing.** triage-agent → billing-specialist \| shipping-specialist             |
+| `/agents/after-sale-report` | POST   | Concurrent | **Testing.** sales-analyst ∥ satisfaction-analyst → merged admin report           |
+| `/agents/sales`             | POST   | —          | **Testing.** SalesAgent — single turn, two tools                                  |
+| `/health`                   | GET    | —          | Catalog index connectivity probe                                                  |
 
 ### Request / Response
 

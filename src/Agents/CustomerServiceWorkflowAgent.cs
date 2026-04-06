@@ -50,7 +50,7 @@ public class CustomerServiceWorkflowAgent(
         "Help with shipment tracking, delivery delays, wrong address corrections, and lost package claims. " +
         "Provide specific estimated delivery information based on order status (Pending, Shipped, Delivered).";
 
-    public AIAgent CreateAgent(string name)
+    public AIAgent CreateAgent(string name, bool runningAsGroupChatParticipant = false)
     {
         var triageAgent = chatClient.AsAIAgent(
             instructions: TriageInstructions,
@@ -75,12 +75,20 @@ public class CustomerServiceWorkflowAgent(
                 OrderStatusTool.Create(orderRepo)
             ]);
 
-        // Handoff workflow: triage routes to billing or shipping; specialists can return to triage
-        var workflow = AgentWorkflowBuilder
+        // Handoff workflow: triage routes to billing or shipping.
+        // EnableReturnToPrevious() routes subsequent turns back to the last specialist,
+        // skipping triage re-classification for follow-up messages in the same session.
+        // Disabled when running as a GroupChat participant: the switch graph internals
+        // trigger an exception whose TargetSite (MethodBase) cannot be serialized by
+        // System.Text.Json when the exception propagates through the GroupChat pipeline.
+        var workflowBuilder = AgentWorkflowBuilder
             .CreateHandoffBuilderWith(triageAgent)
-            .WithHandoffs(triageAgent, [billingSpecialist, shippingSpecialist])
-            .EnableReturnToPrevious()
-            .Build();
+            .WithHandoffs(triageAgent, [billingSpecialist, shippingSpecialist]);
+
+        if (!runningAsGroupChatParticipant)
+            workflowBuilder.EnableReturnToPrevious();
+
+        var workflow = workflowBuilder.Build();
 
         return Create(workflow, name);
     }

@@ -81,6 +81,11 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<IOrderRepository, OrderRepository>();
         builder.Services.AddSingleton<ICustomerRepository, CustomerRepository>();
 
+        // Conversation history store — keyed by sessionId, accumulates ChatMessage turns.
+        // Replace InMemoryConversationHistoryStore with a Redis/Cosmos/SQL implementation
+        // for production multi-instance deployments (one DI line change).
+        builder.Services.AddSingleton<IConversationHistoryStore, InMemoryConversationHistoryStore>();
+
         builder.Services.AddHealthChecks();
     }
 
@@ -93,11 +98,23 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton(
             new AzureOpenAIClient(new Uri(foundrySettings.Endpoint!), credential));
 
-        // IChatClient — pre-configured with the model deployment for sub-agent construction
+        // IChatClient middleware pipeline (outermost → innermost):
+        //   UseLogging          — logs every request/response via LoggingChatClient
+        //   UseFunctionInvocation — executes tool calls returned by the LLM and re-submits
+        //                          the tool results automatically before returning to callers.
+        //                          Required: AsAIAgent() does not invoke tools itself; without
+        //                          this middleware, parallel or sequential tool_calls returned
+        //                          by the LLM are left unexecuted in the history, causing
+        //                          HTTP 400 "assistant message with tool_calls must be followed
+        //                          by tool messages" from Azure OpenAI on the next LLM call.
         builder.Services.AddSingleton<IChatClient>(sp =>
             sp.GetRequiredService<AzureOpenAIClient>()
                 .GetChatClient(foundrySettings.Deployment!)
-                .AsIChatClient());
+                .AsIChatClient()
+                .AsBuilder()
+                .UseLogging(sp.GetRequiredService<ILoggerFactory>())
+                .UseFunctionInvocation()
+                .Build());
     }
 
     private static void AddCatalogSearch(
@@ -188,9 +205,15 @@ public static class ServiceCollectionExtensions
             OrchestratorAgent.AgentName,
             (sp, name) =>
             {
+                // Build a dedicated CustomerService agent without EnableReturnToPrevious so
+                // the handoff switch graph does not trigger a TargetSite serialization error
+                // when exceptions propagate through the GroupChat pipeline.
+                var customerServiceForOrchestrator = sp.GetRequiredService<CustomerServiceWorkflowAgent>()
+                    .CreateAgent(CustomerServiceWorkflowAgent.AgentName, runningAsGroupChatParticipant: true);
+
                 var participants = new List<AIAgent>
                 {
-                    sp.GetRequiredKeyedService<AIAgent>(CustomerServiceWorkflowAgent.AgentName),
+                    customerServiceForOrchestrator,
                     sp.GetRequiredKeyedService<AIAgent>(AfterSaleReportWorkflowAgent.AgentName),
                 };
 
