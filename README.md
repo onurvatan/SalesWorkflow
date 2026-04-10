@@ -2,12 +2,13 @@
 
 A .NET 10 Web API for an AI-powered e-commerce sales assistant built with the **Microsoft Agent Framework** and **Azure AI Search** vector embeddings.
 
-| Agent                          | Endpoint                         | Pattern    | Description                                                                                           |
-| ------------------------------ | -------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
-| `OrchestratorAgent`            | `POST /agents`                   | GroupChat  | **Production entry point.** LLM-driven routing to CustomerService \| AfterSaleReport \| SalesWorkflow |
-| `SalesWorkflowAgent`           | `POST /agents/sales-workflow`    | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder                                  |
-| `CustomerServiceWorkflowAgent` | `POST /agents/customer-service`  | Handoff    | triage-agent routes to billing-specialist or shipping-specialist                                      |
-| `AfterSaleReportWorkflowAgent` | `POST /agents/after-sale-report` | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report                                            |
+| Agent                          | Endpoint                         | Pattern    | Description                                                                                        |
+| ------------------------------ | -------------------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `ClientOrchestratorAgent`      | `POST /agents`                   | GroupChat  | **Production (client-facing) entry point.** LLM-driven routing to CustomerService \| SalesWorkflow |
+| `BackOfficeOrchestratorAgent`  | `POST /admin/agents`             | GroupChat  | **Admin entry point (API-key protected).** Routes admin prompts to AfterSaleReportWorkflowAgent    |
+| `SalesWorkflowAgent`           | `POST /agents/sales-workflow`    | Sequential | 3-step pipeline: catalog-retriever → stock-checker → sales-responder                               |
+| `CustomerServiceWorkflowAgent` | `POST /agents/customer-service`  | Handoff    | triage-agent routes to billing-specialist or shipping-specialist                                   |
+| `AfterSaleReportWorkflowAgent` | `POST /agents/after-sale-report` | Concurrent | sales-analyst ∥ satisfaction-analyst → merged admin report                                         |
 
 All agents are visible in the **Agent Framework DevUI** at `/devui` (development only).
 
@@ -23,12 +24,12 @@ The codebase is organized around three layers that map directly to the Microsoft
 
 A **workflow** is the wiring between sub-agents — it defines the topology (who runs when) and the termination condition. Each workflow class owns that topology; it has no HTTP concerns of its own.
 
-| Class                          | Pattern        | Topology                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OrchestratorAgent`            | **GroupChat**  | **Production entry point.** `OrchestratorGroupChatManager` sends a routing prompt to the LLM at each turn; the model replies with the name of the participant to invoke next (`CustomerServiceWorkflowAgent`, `AfterSaleReportWorkflowAgent`, or `SalesWorkflowAgent`). Terminates after 3 iterations or when the response contains `[DONE]`. |
-| `SalesWorkflowAgent`           | **Sequential** | `catalog-retriever` → `stock-checker` → `sales-responder` — each step receives the previous step's output as its input; the chain terminates after the final step.                                                                                                                                                                            |
-| `CustomerServiceWorkflowAgent` | **Handoff**    | `triage-agent` classifies intent → hands off to `billing-specialist` or `shipping-specialist`. `EnableReturnToPrevious()` lets a specialist route back to triage for re-classification without restarting the session (disabled when running inside the Orchestrator GroupChat to avoid a serialization incompatibility).                     |
-| `AfterSaleReportWorkflowAgent` | **Concurrent** | `sales-analyst` ∥ `satisfaction-analyst` run in parallel (fan-out), and their outputs are merged by an aggregator delegate into a single admin report (fan-in).                                                                                                                                                                               |
+| Class                          | Pattern        | Topology                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ClientOrchestratorAgent`      | **GroupChat**  | **Production (client-facing) entry point.** `OrchestratorGroupChatManager` sends a routing prompt to the LLM at each turn; the model replies with the name of the participant to invoke next (`CustomerServiceWorkflowAgent` or `SalesWorkflowAgent`). Terminates after 3 iterations or when the response contains `[DONE]`. |
+| `SalesWorkflowAgent`           | **Sequential** | `catalog-retriever` → `stock-checker` → `sales-responder` — each step receives the previous step's output as its input; the chain terminates after the final step.                                                                                                                                                           |
+| `CustomerServiceWorkflowAgent` | **Handoff**    | `triage-agent` classifies intent → hands off to `billing-specialist` or `shipping-specialist`. `EnableReturnToPrevious()` lets a specialist route back to triage for re-classification without restarting the session (disabled when running inside the Orchestrator GroupChat to avoid a serialization incompatibility).    |
+| `AfterSaleReportWorkflowAgent` | **Concurrent** | `sales-analyst` ∥ `satisfaction-analyst` run in parallel (fan-out), and their outputs are merged by an aggregator delegate into a single admin report (fan-in).                                                                                                                                                              |
 
 ### Sub-agents
 
@@ -102,7 +103,7 @@ src/
     SalesWorkflowAgent.cs      — Sequential: catalog-retriever → stock-checker → sales-responder
     CustomerServiceWorkflowAgent.cs — Handoff: triage-agent → billing-specialist | shipping-specialist
     AfterSaleReportWorkflowAgent.cs — Concurrent: sales-analyst ∥ satisfaction-analyst → merged report
-    OrchestratorAgent.cs           — GroupChat: LLM-driven routing to the correct workflow agent
+    ClientOrchestratorAgent.cs     — GroupChat: LLM-driven routing to the correct workflow agent (client-facing)
   Services/
     EcommerceIndexService.cs   — creates product-catalog index if absent; embeds + uploads products
   Infrastructure/
@@ -203,20 +204,60 @@ dotnet run
 
 On first startup, `EcommerceIndexService` creates the `product-catalog` index and uploads all 15 products with vector embeddings. Subsequent restarts are idempotent (`MergeOrUpload`).
 
----
+## Back-Office Orchestrator (admin)
+
+- **Agent:** `BackOfficeOrchestratorAgent`
+- **Endpoint:** `POST /admin/agents` (requires `X-Api-Key` header)
+- **Pattern:** GroupChat (admin)
+- **Description:** Routes back-office/admin prompts to the `AfterSaleReportWorkflowAgent`. The admin endpoints are protected by an API key defined in `BackOffice:ApiKey` in `appsettings.Development.json` (default `dev-backoffice-key-12345` in the sample config).
+
+Run & test (local):
+
+1. Start the app locally:
+
+```powershell
+dotnet run
+```
+
+2. Call the back-office agent (example):
+
+```powershell
+$apiKey = 'dev-backoffice-key-12345'
+$body = '{ "input": "Generate the monthly after-sale report" }'
+Invoke-RestMethod -Method Post -Uri https://localhost:57500/admin/agents -Body $body -ContentType 'application/json' -Headers @{ 'X-Api-Key' = $apiKey }
+```
+
+Or with `curl`:
+
+```bash
+curl -k -H "Content-Type: application/json" -H "X-Api-Key: dev-backoffice-key-12345" \
+  -d '{ "input": "Generate the monthly after-sale report" }' \
+  https://localhost:57500/admin/agents
+```
+
+3. Run the unit tests for the project (includes `BackOfficeOrchestratorAgent` tests):
+
+```bash
+dotnet test
+```
+
+Notes and rename suggestion:
+
+- `AfterSaleReportWorkflowAgent` was intentionally moved under the back-office orchestrator since it's an admin/reporting workflow. The existing customer-facing orchestrator has been renamed to `ClientOrchestratorAgent` (routes customer prompts to `CustomerServiceWorkflowAgent` and `SalesWorkflowAgent`). If you prefer a different name, consider `CustomerOrchestratorAgent` or `FrontOfficeOrchestratorAgent` and update the `AgentName` constants and DI registration in `Program.cs` and `src/Agents/*.cs` accordingly.
 
 ## API Reference
 
-> **Production vs. testing:** In production, send all requests to `POST /agents` — the `OrchestratorAgent` inspects the message and routes it to the right workflow automatically. The individual workflow endpoints (`/agents/sales-workflow`, `/agents/customer-service`, `/agents/after-sale-report`) bypass routing and invoke a single workflow directly; they exist for isolated testing and development only.
+> **Production vs. testing:** In production, send all requests to `POST /agents` — the `ClientOrchestratorAgent` inspects the message and routes it to the right workflow automatically. The individual workflow endpoints (`/agents/sales-workflow`, `/agents/customer-service`, `/agents/after-sale-report`) bypass routing and invoke a single workflow directly; they exist for isolated testing and development only.
 
-| Endpoint                    | Method | Pattern    | Description                                                                       |
-| --------------------------- | ------ | ---------- | --------------------------------------------------------------------------------- |
-| `/agents`                   | POST   | GroupChat  | **Production.** Orchestrator — LLM routes to the correct workflow agent           |
-| `/agents/sales-workflow`    | POST   | Sequential | **Testing.** 3-step pipeline: catalog-retriever → stock-checker → sales-responder |
-| `/agents/customer-service`  | POST   | Handoff    | **Testing.** triage-agent → billing-specialist \| shipping-specialist             |
-| `/agents/after-sale-report` | POST   | Concurrent | **Testing.** sales-analyst ∥ satisfaction-analyst → merged admin report           |
-| `/agents/sales`             | POST   | —          | **Testing.** SalesAgent — single turn, two tools                                  |
-| `/health`                   | GET    | —          | Catalog index connectivity probe                                                  |
+| Endpoint                    | Method | Pattern    | Description                                                                                                    |
+| --------------------------- | ------ | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| `/agents`                   | POST   | GroupChat  | **Production.** Orchestrator — LLM routes to the correct workflow agent                                        |
+| `/agents/sales-workflow`    | POST   | Sequential | **Testing.** 3-step pipeline: catalog-retriever → stock-checker → sales-responder                              |
+| `/agents/customer-service`  | POST   | Handoff    | **Testing.** triage-agent → billing-specialist \| shipping-specialist                                          |
+| `/agents/after-sale-report` | POST   | Concurrent | **Testing.** sales-analyst ∥ satisfaction-analyst → merged admin report                                        |
+| `/agents/sales`             | POST   | —          | **Testing.** SalesAgent — single turn, two tools                                                               |
+| `/health`                   | GET    | —          | Catalog index connectivity probe                                                                               |
+| `/admin/agents`             | POST   | GroupChat  | **Admin (API-key protected).** Back-office orchestrator — routes admin prompts to AfterSaleReportWorkflowAgent |
 
 ### Request / Response
 

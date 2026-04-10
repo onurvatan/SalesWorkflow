@@ -2,7 +2,7 @@
 
 `POST /agents`
 
-The `OrchestratorAgent` demonstrates the **GroupChat** workflow pattern from [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows). A single entry point accepts any prompt. A custom `OrchestratorGroupChatManager` uses the LLM to classify the user's intent and selects the appropriate workflow agent as the next speaker — without hardcoded routing rules.
+The `ClientOrchestratorAgent` demonstrates the **GroupChat** workflow pattern from [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows). A single entry point accepts any prompt. A custom `OrchestratorGroupChatManager` uses the LLM to classify the user's intent and selects the appropriate workflow agent as the next speaker — without hardcoded routing rules.
 
 ---
 
@@ -13,7 +13,7 @@ POST /agents  { "input": "..." }
       │
       ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  OrchestratorAgent  (GroupChat workflow)                            │
+│  ClientOrchestratorAgent  (GroupChat workflow)                      │
 │                                                                     │
 │  OrchestratorGroupChatManager                                       │
 │    SelectNextAgentAsync()  ── LLM classifies intent                 │
@@ -21,11 +21,11 @@ POST /agents  { "input": "..." }
 │    MaximumIterationCount   = 3  (safety ceiling)                    │
 │                       │                                             │
 │      ┌────────────────┼────────────────┐                            │
-│      ▼                ▼                ▼                            │
-│  CustomerService  AfterSaleReport  SalesWorkflow                    │
-│  WorkflowAgent    WorkflowAgent    Agent                            │
-│  (Handoff)        (Concurrent)     (Sequential)                     │
-│                                    ⚠ only when catalog configured   │
+│      ▼                ▼                                           │
+│  CustomerService  SalesWorkflow                                     │
+│  WorkflowAgent    Agent                                                │
+│  (Handoff)        (Sequential)                                        │
+│                   ⚠ only when catalog configured                     │
 └─────────────────────────────────────────────────────────────────────┘
       │
       ▼
@@ -49,7 +49,6 @@ no punctuation) that should handle this request.
 
 Available agents:
 - CustomerServiceWorkflowAgent: Handoff customer-service workflow: triage-agent → billing-specialist | shipping-specialist.
-- AfterSaleReportWorkflowAgent: Concurrent after-sale report workflow: sales-analyst ‖ satisfaction-analyst → merged admin report.
 - SalesWorkflowAgent:           Sequential sales workflow: catalog-retriever → stock-checker → sales-responder.
 
 User request: <last user message>
@@ -68,13 +67,13 @@ The workflow terminates when either condition is met:
 
 ### Routing examples
 
-| User prompt                                              | Selected agent                 |
-| -------------------------------------------------------- | ------------------------------ |
-| `"I want a refund for ORD-004"`                          | `CustomerServiceWorkflowAgent` |
-| `"My order ORD-002 hasn't arrived"`                      | `CustomerServiceWorkflowAgent` |
-| `"Show me this month's revenue and satisfaction report"` | `AfterSaleReportWorkflowAgent` |
-| `"Which laptops do you have under $1500?"`               | `SalesWorkflowAgent`           |
-| `"How many cancellations did we have?"`                  | `AfterSaleReportWorkflowAgent` |
+| User prompt                                | Selected agent                 |
+| ------------------------------------------ | ------------------------------ |
+| `"I want a refund for ORD-004"`            | `CustomerServiceWorkflowAgent` |
+| `"My order ORD-002 hasn't arrived"`        | `CustomerServiceWorkflowAgent` |
+| `"Which laptops do you have under $1500?"` | `SalesWorkflowAgent`           |
+| `"Which laptops do you have under $1500?"` | `SalesWorkflowAgent`           |
+| `"I want a refund for ORD-004"`            | `CustomerServiceWorkflowAgent` |
 
 ---
 
@@ -112,23 +111,23 @@ public sealed class OrchestratorGroupChatManager : GroupChatManager
 | Participant                    | Always registered? | Condition                                             |
 | ------------------------------ | ------------------ | ----------------------------------------------------- |
 | `CustomerServiceWorkflowAgent` | Yes                | Always                                                |
-| `AfterSaleReportWorkflowAgent` | Yes                | Always                                                |
 | `SalesWorkflowAgent`           | No                 | Only when `SalesIndex:CatalogIndexName` is configured |
+
+Note: `AfterSaleReportWorkflowAgent` is registered by the app (used by admin/back-office flows) but is intentionally NOT a participant of the `ClientOrchestratorAgent`.
 
 The orchestrator's DI factory captures `hasCatalog` at registration time:
 
 ```csharp
-builder.AddAIAgent(OrchestratorAgent.AgentName, (sp, name) =>
+builder.AddAIAgent(ClientOrchestratorAgent.AgentName, (sp, name) =>
 {
     var participants = new List<AIAgent>
     {
         sp.GetRequiredKeyedService<AIAgent>(CustomerServiceWorkflowAgent.AgentName),
-        sp.GetRequiredKeyedService<AIAgent>(AfterSaleReportWorkflowAgent.AgentName),
     };
     if (hasCatalog)
         participants.Add(sp.GetRequiredKeyedService<AIAgent>(SalesWorkflowAgent.AgentName));
 
-    return sp.GetRequiredService<OrchestratorAgent>().CreateAgent(name, participants);
+    return sp.GetRequiredService<ClientOrchestratorAgent>().CreateAgent(name, participants);
 }, ServiceLifetime.Singleton);
 ```
 
@@ -147,7 +146,7 @@ Content-Type: application/json
 
 ```json
 {
-  "agentName": "OrchestratorAgent",
+  "agentName": "ClientOrchestratorAgent",
   "result": "# After-Sale Admin Report\n\n## Sales Analysis\n\n- **Total Orders**: 10...\n\n---\n\n## Customer Satisfaction Analysis\n\n- ⚠ At-Risk: David Lee (CUST-004) — Score: 2..."
 }
 ```
@@ -170,7 +169,7 @@ The orchestrator routes to `CustomerServiceWorkflowAgent` → triage-agent class
 | Property                | Value                                               |
 | ----------------------- | --------------------------------------------------- |
 | Route                   | `POST /agents`                                      |
-| Registered name (DI)    | `"OrchestratorAgent"`                               |
+| Registered name (DI)    | `"ClientOrchestratorAgent"`                         |
 | Workflow builder        | `AgentWorkflowBuilder.CreateGroupChatBuilderWith`   |
 | Manager                 | `OrchestratorGroupChatManager` (custom, LLM-driven) |
 | Execution mode          | `InProcessExecution.OffThread`                      |

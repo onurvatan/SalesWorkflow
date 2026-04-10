@@ -1,7 +1,7 @@
 # Sample Prompts & Expected Workflow Routing
 
 This document provides example user prompts and explains which agent the
-`OrchestratorAgent` should route them to, along with the reasoning behind each
+`ClientOrchestratorAgent` should route them to, along with the reasoning behind each
 routing decision.
 
 ---
@@ -166,42 +166,42 @@ info: Program[0]
       [AfterSaleReportWorkflowAgent] Completed.
 ```
 
-### OrchestratorAgent — `POST /agents` (normal routing)
+### ClientOrchestratorAgent — `POST /agents` (normal routing)
 
 ```
 info: Program[0]
-      [OrchestratorAgent] Received: I want to buy a Dell laptop
+      [ClientOrchestratorAgent] Received: I want to buy a Dell laptop
 dbug: SalesWorkflow.Agents.OrchestratorGroupChatManager[0]
-      Orchestrator LLM routing response: 'SalesWorkflowAgent'
+      ClientOrchestrator LLM routing response: 'SalesWorkflowAgent'
 info: SalesWorkflow.Agents.OrchestratorGroupChatManager[0]
-      [Orchestrator] Routing decision (turn 1/3): 'SalesWorkflowAgent'
+      [ClientOrchestrator] Routing decision (turn 1/3): 'SalesWorkflowAgent'
 info: SalesWorkflow.Agents.OrchestratorGroupChatManager[0]
-      [Orchestrator] Terminating — [DONE] sentinel detected in last assistant message.
+      [ClientOrchestrator] Terminating — [DONE] sentinel detected in last assistant message.
 info: Program[0]
-      [OrchestratorAgent] Completed.
+      [ClientOrchestratorAgent] Completed.
 ```
 
-### OrchestratorAgent — `POST /agents` (fallback routing)
+### ClientOrchestratorAgent — `POST /agents` (fallback routing)
 
 Triggered when the LLM returns a name that does not match any participant
 (e.g. prompt `"Help me"`):
 
 ```
 info: Program[0]
-      [OrchestratorAgent] Received: Help me
+      [ClientOrchestratorAgent] Received: Help me
 dbug: SalesWorkflow.Agents.OrchestratorGroupChatManager[0]
-      Orchestrator LLM routing response: 'UnknownAgent'
+      ClientOrchestrator LLM routing response: 'UnknownAgent'
 info: SalesWorkflow.Agents.OrchestratorGroupChatManager[0]
-      [Orchestrator] Routing decision (turn 1/3): 'CustomerServiceWorkflowAgent' [fallback — LLM returned unrecognised name]
+      [ClientOrchestrator] Routing decision (turn 1/3): 'CustomerServiceWorkflowAgent' [fallback — LLM returned unrecognised name]
 info: Program[0]
-      [OrchestratorAgent] Completed.
+      [ClientOrchestratorAgent] Completed.
 ```
 
-### OrchestratorAgent — `POST /agents` (max iterations reached)
+### ClientOrchestratorAgent — `POST /agents` (max iterations reached)
 
 ```
 info: SalesWorkflow.Agents.OrchestratorGroupChatManager[0]
-      [Orchestrator] Terminating — max iterations (3) reached.
+      [ClientOrchestrator] Terminating — max iterations (3) reached.
 ```
 
 ### Log Level Reference

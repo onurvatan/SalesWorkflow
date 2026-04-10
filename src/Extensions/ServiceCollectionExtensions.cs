@@ -200,7 +200,7 @@ public static class ServiceCollectionExtensions
 
     private static void AddOrchestratorAgent(WebApplicationBuilder builder, bool hasCatalog)
     {
-        builder.Services.AddSingleton<OrchestratorAgent>();
+        builder.Services.AddSingleton<ClientOrchestratorAgent>();
 
         // ── OrchestratorAgent — GroupChat workflow ────────────────────────
         // OrchestratorGroupChatManager uses the LLM to classify intent and
@@ -208,7 +208,7 @@ public static class ServiceCollectionExtensions
         // Participants are resolved from DI at factory time; SalesWorkflowAgent
         // is only included when the catalog index is configured.
         builder.AddAIAgent(
-            OrchestratorAgent.AgentName,
+            ClientOrchestratorAgent.AgentName,
             (sp, name) =>
             {
                 // Build a dedicated CustomerService agent without EnableReturnToPrevious so
@@ -225,7 +225,7 @@ public static class ServiceCollectionExtensions
                 if (hasCatalog)
                     participants.Add(sp.GetRequiredKeyedService<AIAgent>(SalesWorkflowAgent.AgentName));
 
-                return sp.GetRequiredService<OrchestratorAgent>().CreateAgent(
+                return sp.GetRequiredService<ClientOrchestratorAgent>().CreateAgent(
                     name,
                     participants,
                     sp.GetRequiredService<ILogger<OrchestratorGroupChatManager>>());

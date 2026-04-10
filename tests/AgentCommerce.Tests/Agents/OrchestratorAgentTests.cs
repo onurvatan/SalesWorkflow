@@ -42,19 +42,19 @@ public class OrchestratorAgentTests
     [Fact]
     public void AgentName_IsExpectedValue()
     {
-        Assert.Equal("OrchestratorAgent", OrchestratorAgent.AgentName);
+        Assert.Equal("ClientOrchestratorAgent", ClientOrchestratorAgent.AgentName);
     }
 
     [Fact]
     public void WorkflowDescription_IsNotNullOrEmpty()
     {
-        Assert.False(string.IsNullOrWhiteSpace(OrchestratorAgent.WorkflowDescription));
+        Assert.False(string.IsNullOrWhiteSpace(ClientOrchestratorAgent.WorkflowDescription));
     }
 
     [Fact]
     public void WorkflowDescription_MentionsGroupChat()
     {
-        Assert.Contains("GroupChat", OrchestratorAgent.WorkflowDescription,
+        Assert.Contains("GroupChat", ClientOrchestratorAgent.WorkflowDescription,
             StringComparison.OrdinalIgnoreCase);
     }
 
@@ -67,9 +67,9 @@ public class OrchestratorAgentTests
         var customerServiceAgent = BuildStubAgent("CustomerServiceWorkflowAgent");
         var afterSaleAgent = BuildStubAgent("AfterSaleReportWorkflowAgent");
 
-        var orchestratorAgent = new OrchestratorAgent(chatClient);
+        var orchestratorAgent = new ClientOrchestratorAgent(chatClient);
         var agent = orchestratorAgent.CreateAgent(
-            OrchestratorAgent.AgentName,
+            ClientOrchestratorAgent.AgentName,
             [customerServiceAgent, afterSaleAgent]);
 
         Assert.NotNull(agent);
@@ -84,9 +84,9 @@ public class OrchestratorAgentTests
         var afterSaleAgent = BuildStubAgent("AfterSaleReportWorkflowAgent");
         var salesAgent = BuildStubAgent("SalesWorkflowAgent");
 
-        var orchestratorAgent = new OrchestratorAgent(chatClient);
+        var orchestratorAgent = new ClientOrchestratorAgent(chatClient);
         var agent = orchestratorAgent.CreateAgent(
-            OrchestratorAgent.AgentName,
+            ClientOrchestratorAgent.AgentName,
             [customerServiceAgent, afterSaleAgent, salesAgent]);
 
         Assert.NotNull(agent);

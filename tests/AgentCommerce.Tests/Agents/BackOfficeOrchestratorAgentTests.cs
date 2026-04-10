@@ -74,7 +74,7 @@ public class BackOfficeOrchestratorAgentTests
     [Fact]
     public void AgentName_DiffersFromCustomerFacingOrchestratorName()
     {
-        Assert.NotEqual(OrchestratorAgent.AgentName, BackOfficeOrchestratorAgent.AgentName);
+        Assert.NotEqual(ClientOrchestratorAgent.AgentName, BackOfficeOrchestratorAgent.AgentName);
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

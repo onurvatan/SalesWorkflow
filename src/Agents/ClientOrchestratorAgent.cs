@@ -72,7 +72,7 @@ public class OrchestratorGroupChatManager : GroupChatManager
 
         var chosen = response.Text?.Trim() ?? string.Empty;
 
-        _logger.LogDebug("Orchestrator LLM routing response: '{Chosen}'", chosen);
+        _logger.LogDebug("ClientOrchestrator LLM routing response: '{Chosen}'", chosen);
 
         // Match by name (case-insensitive, allow partial e.g. "CustomerService")
         var match = _participants.FirstOrDefault(p =>
@@ -84,7 +84,7 @@ public class OrchestratorGroupChatManager : GroupChatManager
         var isFallback = match is null;
 
         _logger.LogInformation(
-            "[Orchestrator] Routing decision (turn {Turn}/{Max}): '{Selected}'{Fallback}",
+            "[ClientOrchestrator] Routing decision (turn {Turn}/{Max}): '{Selected}'{Fallback}",
             IterationCount + 1,
             MaximumIterationCount,
             selected.Name,
@@ -103,14 +103,14 @@ public class OrchestratorGroupChatManager : GroupChatManager
     {
         if (IterationCount >= MaximumIterationCount)
         {
-            _logger.LogInformation("[Orchestrator] Terminating — max iterations ({Max}) reached.", MaximumIterationCount);
+            _logger.LogInformation("[ClientOrchestrator] Terminating — max iterations ({Max}) reached.", MaximumIterationCount);
             return ValueTask.FromResult(true);
         }
 
         var lastAssistant = history.LastOrDefault(m => m.Role == ChatRole.Assistant);
         if (lastAssistant?.Text?.Contains("[DONE]", StringComparison.OrdinalIgnoreCase) == true)
         {
-            _logger.LogInformation("[Orchestrator] Terminating — [DONE] sentinel detected in last assistant message.");
+            _logger.LogInformation("[ClientOrchestrator] Terminating — [DONE] sentinel detected in last assistant message.");
             return ValueTask.FromResult(true);
         }
 
@@ -136,12 +136,12 @@ public class OrchestratorGroupChatManager : GroupChatManager
 ///   <item><b>SalesWorkflowAgent</b> — product search (registered only when catalog is configured)</item>
 /// </list>
 /// </summary>
-public class OrchestratorAgent(IChatClient chatClient)
+public class ClientOrchestratorAgent(IChatClient chatClient)
 {
-    public const string AgentName = "OrchestratorAgent";
+    public const string AgentName = "ClientOrchestratorAgent";
 
     public const string WorkflowDescription =
-        "GroupChat orchestrator: routes customer prompts to CustomerServiceWorkflow | SalesWorkflow.";
+        "GroupChat (client-facing) orchestrator: routes customer prompts to CustomerServiceWorkflow | SalesWorkflow.";
 
     public AIAgent CreateAgent(
         string name,

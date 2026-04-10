@@ -207,12 +207,12 @@ app.MapPost("/agents/after-sale-report",
 //     CustomerServiceWorkflowAgent | SalesWorkflowAgent
 app.MapPost("/agents",
     async (ChatRequest req,
-           [FromKeyedServices("OrchestratorAgent")] AIAgent agent,
+           [FromKeyedServices("ClientOrchestratorAgent")] AIAgent agent,
            IConversationHistoryStore store,
            ILogger<Program> logger) =>
     {
         var sessionId = req.SessionId ?? Guid.NewGuid().ToString("N");
-        logger.LogInformation("[OrchestratorAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
+        logger.LogInformation("[ClientOrchestratorAgent] Session={SessionId} Received: {Input}", sessionId, req.Input);
         try
         {
             var history = store.GetOrCreate(sessionId);
@@ -220,12 +220,12 @@ app.MapPost("/agents",
             var result = await agent.RunAsync(history, null, null, default);
             history.Add(new ChatMessage(ChatRole.Assistant, result.Text ?? string.Empty));
             store.Save(sessionId, history);
-            logger.LogInformation("[OrchestratorAgent] Session={SessionId} Completed.", sessionId);
-            return Results.Ok(new { agentName = "OrchestratorAgent", sessionId, result = result.Text });
+            logger.LogInformation("[ClientOrchestratorAgent] Session={SessionId} Completed.", sessionId);
+            return Results.Ok(new { agentName = "ClientOrchestratorAgent", sessionId, result = result.Text });
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "[OrchestratorAgent] Session={SessionId} Execution failed.", sessionId);
+            logger.LogError(ex, "[ClientOrchestratorAgent] Session={SessionId} Execution failed.", sessionId);
             return Results.Problem(ex.Message, statusCode: 500);
         }
     })
