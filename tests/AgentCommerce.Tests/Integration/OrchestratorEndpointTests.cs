@@ -78,7 +78,7 @@ public class OrchestratorEndpointTests(WebApplicationFactory<Program> factory)
 
         response.EnsureSuccessStatusCode();
         var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("OrchestratorAgent", doc.RootElement.GetProperty("agentName").GetString());
+        Assert.Equal("ClientOrchestratorAgent", doc.RootElement.GetProperty("agentName").GetString());
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class OrchestratorEndpointTests(WebApplicationFactory<Program> factory)
         // participants); it won't call AfterSaleReport since it's not a participant.
         response.EnsureSuccessStatusCode();
         var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("OrchestratorAgent", doc.RootElement.GetProperty("agentName").GetString());
+        Assert.Equal("ClientOrchestratorAgent", doc.RootElement.GetProperty("agentName").GetString());
     }
 
     // ── Session cleanup ──────────────────────────────────────────────────────

@@ -73,7 +73,7 @@ public class OrchestratorAgentTests
             [customerServiceAgent, afterSaleAgent]);
 
         Assert.NotNull(agent);
-        Assert.Equal(OrchestratorAgent.AgentName, agent.Name);
+        Assert.Equal(ClientOrchestratorAgent.AgentName, agent.Name);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class OrchestratorAgentTests
             [customerServiceAgent, afterSaleAgent, salesAgent]);
 
         Assert.NotNull(agent);
-        Assert.Equal(OrchestratorAgent.AgentName, agent.Name);
+        Assert.Equal(ClientOrchestratorAgent.AgentName, agent.Name);
     }
 
     // ─── OrchestratorGroupChatManager ─────────────────────────────────────────
